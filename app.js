@@ -1,7 +1,17 @@
 // ============================================================
 //  MinMik IT AI Assistant — app.js
-//  Powered by Anthropic Claude API
+//  Fixed Global Variables
 // ============================================================
+
+const SYSTEM_PROMPT = `You are MinMik AI, an expert IT Support Engineer...`; // (Keep your existing prompt text here)
+
+// --- MISSING VARIABLES START HERE ---
+let chatHistory = []; 
+let isGenerating = false;
+// --- MISSING VARIABLES END HERE ---
+
+const TOPICS = [
+  // ... your existing topics go here ...
 
 const SYSTEM_PROMPT = `You are MinMik AI, an expert IT Support Engineer working for minmik.com. You specialize in providing detailed, structured troubleshooting guidance for IT professionals at L1, L2, and L3 support levels.
 let chatHistory = [];
@@ -159,57 +169,49 @@ What IT issue can I help you troubleshoot today?`
 }
 
 // ===== SEND MESSAGE =====
-async function sendMessage() {
-  const input = document.getElementById('userInput');
-  const userText = input.value.trim();
-  if (!userText || isLoading) return;
+async function sendMessage(text = null) {
+  const message = text || userInput.value.trim();
+  if (!message || isGenerating) return;
 
-  input.value = '';
-  autoResize(input);
-  input.style.height = 'auto';
-
-  renderMessage('user', escapeHTML(userText));
-  conversationHistory.push({ role: 'user', content: userText });
-
-  setLoading(true);
-  const typingId = showTyping();
-
+  // 1. Update UI and History
+  isGenerating = true;
+  addMessage('user', message);
+  userInput.value = '';
+  autoResize(userInput);
+  
+  // Create a placeholder for the AI response
+  const botMessageId = addMessage('bot', '', true);
+  
   try {
-   const response = await fetch('/.netlify/functions/chat', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    system: SYSTEM_PROMPT,
-    messages: [
-      ...chatHistory,
-      { role: 'user', content: message }
-    ]
-  })
-});
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || `API error: ${response.status}`);
-    }
+    // 2. Call your Secure Netlify Function
+    const response = await fetch('/.netlify/functions/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: SYSTEM_PROMPT,
+        messages: [
+          ...chatHistory,
+          { role: 'user', content: message }
+        ]
+      })
+    });
+
+    if (!response.ok) throw new Error('Failed to connect to AI');
 
     const data = await response.json();
-    const aiText = data.content?.find(b => b.type === 'text')?.text || 'No response received.';
+    const aiResponse = data.content[0].text;
 
-    removeTyping(typingId);
-    conversationHistory.push({ role: 'assistant', content: aiText });
-    renderMessage('ai', parseMarkdown(aiText));
+    // 3. Save to History and Update UI
+    chatHistory.push({ role: 'user', content: message });
+    chatHistory.push({ role: 'assistant', content: aiResponse });
+    
+    updateMessage(botMessageId, aiResponse);
 
-  } catch (err) {
-    removeTyping(typingId);
-    renderMessage('ai', `<span style="color:var(--red)">⚠ Error: ${escapeHTML(err.message)}</span><br><br>
-      Please check:<br>
-      • Your Anthropic API key is configured correctly<br>
-      • You have network access to api.anthropic.com<br>
-      • Your API key has sufficient credits<br><br>
-      <strong>Setup instructions:</strong> Open <code>app.js</code> and ensure your API key is passed through the fetch headers, or configure a proxy server.`);
+  } catch (error) {
+    console.error('Error:', error);
+    updateMessage(botMessageId, "Error: " + error.message);
   } finally {
-    setLoading(false);
+    isGenerating = false;
   }
 }
 
