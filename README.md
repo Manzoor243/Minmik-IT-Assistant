@@ -1,1 +1,0 @@
-# Minmik.-website
